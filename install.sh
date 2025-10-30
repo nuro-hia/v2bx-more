@@ -78,10 +78,10 @@ add_node() {
     *) echo "❌ 无效类型"; return ;;
   esac
 
-  read -rp "🪧 面板地址 (如 https://example.com): " API_HOST
+  read -rp "🪧 面板地址: " API_HOST
   read -rp "🔑 API Key: " API_KEY
-  read -rp "🆔 节点 ID (数字): " NODE_ID
-  read -rp "🌐 节点域名 (如 node.example.com): " CERT_DOMAIN
+  read -rp "🆔 节点 ID: " NODE_ID
+  read -rp "🌐 节点域名: " CERT_DOMAIN
 
   if [[ -z "$API_HOST" || -z "$API_KEY" || -z "$NODE_ID" || -z "$CERT_DOMAIN" ]]; then
     echo "❌ 参数不能为空。"
@@ -115,7 +115,6 @@ add_node() {
 }
 EOF
 )
-
   jq ".Nodes += [$NEW_NODE]" "$CONFIG_FILE" >"$TEMP_FILE" && mv "$TEMP_FILE" "$CONFIG_FILE"
   echo "✅ 节点添加成功。"
   restart_v2bx
@@ -134,10 +133,7 @@ delete_node() {
 
   list_nodes
   read -rp "🗑️ 请输入要删除的节点序号: " IDX
-  if [[ -z "$IDX" ]]; then
-    echo "❌ 未输入编号。"
-    return
-  fi
+  [[ -z "$IDX" ]] && echo "❌ 未输入编号。" && return
   IDX=$((IDX - 1))
   jq "del(.Nodes[$IDX])" "$CONFIG_FILE" >"$TEMP_FILE" && mv "$TEMP_FILE" "$CONFIG_FILE"
   echo "✅ 节点已删除。"
@@ -154,19 +150,12 @@ backup_config() {
 # 恢复配置
 restore_config() {
   FILES=($(ls -1 "$BACKUP_DIR"/config_*.json 2>/dev/null))
-  if [[ ${#FILES[@]} -eq 0 ]]; then
-    echo "❌ 没有备份文件。"
-    return
-  fi
+  [[ ${#FILES[@]} -eq 0 ]] && echo "❌ 没有备份文件。" && return
 
   echo "📂 可用备份文件："
-  for i in "${!FILES[@]}"; do echo "$((i + 1)). ${FILES[$i]}"; done
-
+  for i in "${!FILES[@]}"; do echo "$((i + 1))) ${FILES[$i]}"; done
   read -rp "📥 请输入要恢复的编号: " IDX
-  if [[ "$IDX" -lt 1 || "$IDX" -gt ${#FILES[@]} ]]; then
-    echo "❌ 无效编号。"
-    return
-  fi
+  [[ "$IDX" -lt 1 || "$IDX" -gt ${#FILES[@]} ]] && echo "❌ 无效编号。" && return
   cp "${FILES[$((IDX - 1))]}" "$CONFIG_FILE"
   echo "✅ 已恢复配置：${FILES[$((IDX - 1))]}"
   restart_v2bx
@@ -175,39 +164,29 @@ restore_config() {
 # 删除备份
 delete_backup() {
   FILES=($(ls -1 "$BACKUP_DIR"/config_*.json 2>/dev/null))
-  if [[ ${#FILES[@]} -eq 0 ]]; then
-    echo "❌ 没有备份文件。"
-    return
-  fi
+  [[ ${#FILES[@]} -eq 0 ]] && echo "❌ 没有备份文件。" && return
 
   echo "📂 当前备份文件："
-  for i in "${!FILES[@]}"; do echo "$((i + 1)). ${FILES[$i]}"; done
-
+  for i in "${!FILES[@]}"; do echo "$((i + 1))) ${FILES[$i]}"; done
   read -rp "🗑️ 请输入要删除的编号: " IDX
-  if [[ "$IDX" -lt 1 || "$IDX" -gt ${#FILES[@]} ]]; then
-    echo "❌ 无效编号。"
-    return
-  fi
+  [[ "$IDX" -lt 1 || "$IDX" -gt ${#FILES[@]} ]] && echo "❌ 无效编号。" && return
   rm -f "${FILES[$((IDX - 1))]}"
   echo "✅ 已删除：${FILES[$((IDX - 1))]}"
 }
 
 # 卸载 V2bX + jq
 uninstall_v2bx() {
-  if ! check_v2bx; then
-    echo "❌ 未检测到 V2bX。"
-  else
-    echo "⚠️ 即将卸载 V2bX ..."
+  if check_v2bx; then
+    echo "⚠️ 正在卸载 V2bX ..."
     V2bX uninstall
     rm -f /usr/bin/V2bX
     echo "🧹 已卸载 V2bX 主程序。"
+  else
+    echo "❌ 未检测到 V2bX。"
   fi
-
   if command -v jq &>/dev/null; then
     read -rp "是否同时卸载 jq？(y/n): " RM_JQ
-    if [[ "$RM_JQ" == "y" ]]; then
-      apt remove -y jq >/dev/null 2>&1 && echo "🧹 已卸载 jq。"
-    fi
+    [[ "$RM_JQ" == "y" ]] && apt remove -y jq >/dev/null 2>&1 && echo "🧹 已卸载 jq。"
   fi
 }
 
@@ -223,19 +202,19 @@ restart_v2bx() {
 while true; do
   clear
   echo "=============================="
-  echo "     🌿 V2bX 多平台管理菜单"
+  echo "       🌿 V2bX 多平台管理菜单"
   echo "=============================="
-  echo "1️⃣  安装 V2bX"
-  echo "2️⃣  添加新节点"
-  echo "3️⃣  删除节点"
-  echo "4️⃣  查看所有节点"
-  echo "5️⃣  备份配置"
-  echo "6️⃣  恢复配置"
-  echo "7️⃣  删除备份文件"
-  echo "8️⃣  重启 V2bX"
-  echo "9️⃣  查看实时日志"
-  echo "🔟  卸载 V2bX"
-  echo "0️⃣  退出菜单"
+  echo "1) 安装 V2bX"
+  echo "2) 添加新节点"
+  echo "3) 删除节点"
+  echo "4) 查看所有节点"
+  echo "5) 备份配置"
+  echo "6) 恢复配置"
+  echo "7) 删除备份文件"
+  echo "8) 重启 V2bX"
+  echo "9) 查看实时日志"
+  echo "10) 卸载 V2bX"
+  echo "0) 退出菜单"
   echo "=============================="
   read -rp "请输入选项 [0-10]: " CHOICE
   case "$CHOICE" in
