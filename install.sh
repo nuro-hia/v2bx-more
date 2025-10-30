@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================
-#  V2bX 多平台管理菜单（安装 / 添加 / 删除 / 备份）
+#  V2bX 多平台管理菜单（支持 ss / hy2 / trojan）
 #  作者: nuro 定制版
 # ==========================================
 
@@ -30,7 +30,7 @@ install_v2bx() {
     return
   fi
   wget -N https://raw.githubusercontent.com/wyx2685/V2bX-script/master/install.sh && bash install.sh
-  echo "✨ 安装完成。"
+  echo "✨ 安装完成，请重新进入菜单操作。"
 }
 
 # 查看节点
@@ -40,6 +40,8 @@ list_nodes() {
     return
   fi
   echo -e "\n📋 当前节点列表："
+  echo "序号 | NodeID | 类型 | 面板地址 | 域名"
+  echo "---------------------------------------------"
   jq -r '.Nodes[] | "\(.NodeID) | \(.NodeType) | \(.ApiHost) | \(.CertConfig.CertDomain)"' "$CONFIG_FILE" | nl -w2 -s'. '
   echo ""
 }
@@ -51,9 +53,8 @@ add_node() {
     read -rp "是否立即安装？(y/n): " ADD_INSTALL
     if [[ "$ADD_INSTALL" == "y" ]]; then
       install_v2bx
-    else
-      return
     fi
+    return  # 🚫 安装后直接退出，不继续执行添加逻辑
   fi
 
   mkdir -p "$(dirname "$CONFIG_FILE")"
@@ -66,11 +67,11 @@ add_node() {
   echo "=============================="
   echo ""
 
-  read -rp "📦 节点类型 [ss/hy2] (默认 ss): " NODE_TYPE
+  read -rp "📦 节点类型 [ss/hy2/trojan] (默认 ss): " NODE_TYPE
   NODE_TYPE=${NODE_TYPE:-ss}
 
-  if [[ "$NODE_TYPE" != "ss" && "$NODE_TYPE" != "hy2" ]]; then
-    echo "❌ 节点类型必须是 ss 或 hy2"
+  if [[ "$NODE_TYPE" != "ss" && "$NODE_TYPE" != "hy2" && "$NODE_TYPE" != "trojan" ]]; then
+    echo "❌ 节点类型必须是 ss、hy2 或 trojan"
     return
   fi
 
@@ -84,13 +85,20 @@ add_node() {
     return
   fi
 
-  if [[ "$NODE_TYPE" == "ss" ]]; then
-    NODE_TYPE_FULL="shadowsocks"
-    TCP="true"
-  else
-    NODE_TYPE_FULL="hysteria2"
-    TCP="false"
-  fi
+  case "$NODE_TYPE" in
+    ss)
+      NODE_TYPE_FULL="shadowsocks"
+      TCP="true"
+      ;;
+    hy2)
+      NODE_TYPE_FULL="hysteria2"
+      TCP="false"
+      ;;
+    trojan)
+      NODE_TYPE_FULL="trojan"
+      TCP="true"
+      ;;
+  esac
 
   NEW_NODE=$(cat <<EOF
 {
@@ -127,6 +135,15 @@ EOF
 
 # 删除节点
 delete_node() {
+  if ! check_v2bx; then
+    echo "❌ 未检测到 V2bX，请先安装。"
+    read -rp "是否立即安装？(y/n): " ADD_INSTALL
+    if [[ "$ADD_INSTALL" == "y" ]]; then
+      install_v2bx
+    fi
+    return
+  fi
+
   list_nodes
   read -rp "🗑️ 请输入要删除的节点序号: " IDX
   if [[ -z "$IDX" ]]; then
