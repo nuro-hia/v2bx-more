@@ -40,7 +40,7 @@ list_nodes() {
     return
   fi
   echo -e "\n📋 当前节点列表："
-  jq -r '.Nodes[] | "\(.NodeID) | \(.NodeType) | \(.ApiHost)"' "$CONFIG_FILE" | nl -w2 -s'. '
+  jq -r '.Nodes[] | "\(.NodeID) | \(.NodeType) | \(.ApiHost) | \(.CertConfig.CertDomain)"' "$CONFIG_FILE" | nl -w2 -s'. '
   echo ""
 }
 
