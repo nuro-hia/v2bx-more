@@ -1,162 +1,136 @@
 #!/bin/bash
-# ===========================================
-#   V2bX 多平台 chroot 管理器
-#   作者: nuro (https://github.com/nuro-hia)
-#   功能: 隔离运行多个 V2bX 面板实例
-# ===========================================
+# ==========================================
+#  V2bX 多平台管理菜单版（支持添加/删除节点）
+#  作者: nuro 定制版
+# ==========================================
 
-BASE_DIR="/srv"
-CHROOT_PREFIX="v2bx"
-DEBIAN_MIRROR="http://deb.debian.org/debian"
+CONFIG_FILE="/etc/V2bX/config.json"
+TEMP_FILE="/tmp/v2bx_config_tmp.json"
 
-green="\033[32m"
-red="\033[31m"
-yellow="\033[33m"
-plain="\033[0m"
+# 检查 jq
+if ! command -v jq &>/dev/null; then
+  echo "安装 jq 中..."
+  apt update -y >/dev/null 2>&1
+  apt install jq -y >/dev/null 2>&1
+fi
 
-check_root() {
-  if [[ $EUID -ne 0 ]]; then
-    echo -e "${red}必须以 root 身份运行${plain}"
-    exit 1
-  fi
-}
+# 确保配置存在
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  echo "❌ 找不到配置文件: $CONFIG_FILE"
+  exit 1
+fi
 
-pause() {
+# === 功能函数 ===
+list_nodes() {
+  echo -e "\n📋 当前节点列表："
+  jq -r '.Nodes[] | "\(.NodeID) | \(.NodeType) | \(.ApiHost)"' "$CONFIG_FILE" | nl -w2 -s'. '
   echo ""
-  read -rp "按回车返回菜单..." _
 }
 
-list_platforms() {
-  echo -e "\n📦 当前已创建的平台实例："
-  ls -1 ${BASE_DIR} | grep "^${CHROOT_PREFIX}-" | sed "s/^/${green}- /;s/$/${plain}/" || echo "暂无实例"
-}
+add_node() {
+  echo "=============================="
+  echo "     ⚙️  添加新节点"
+  echo "=============================="
+  echo ""
 
-create_platform() {
-  read -rp "请输入新平台名称 (例如 mist、cloud、hk): " NAME
-  [[ -z "$NAME" ]] && echo -e "${red}平台名称不能为空${plain}" && return
+  read -rp "请输入节点类型 [ss/hy2] (默认 ss): " NODE_TYPE
+  NODE_TYPE=${NODE_TYPE:-ss}
 
-  TARGET="${BASE_DIR}/${CHROOT_PREFIX}-${NAME}"
-
-  if [[ -d "$TARGET" ]]; then
-    echo -e "${yellow}该平台已存在: ${TARGET}${plain}"
+  if [[ "$NODE_TYPE" != "ss" && "$NODE_TYPE" != "hy2" ]]; then
+    echo "❌ 节点类型必须是 ss 或 hy2"
     return
   fi
 
-  echo -e "${green}正在创建 chroot 环境: ${TARGET}${plain}"
-  mkdir -p "$TARGET"
+  read -rp "请输入面板地址: " API_HOST
+  read -rp "请输入面板 API Key: " API_KEY
+  read -rp "请输入节点 ID: " NODE_ID
+  read -rp "请输入节点域名: " CERT_DOMAIN
 
-  echo -e "${green}下载并安装最小 Debian 系统...${plain}"
-  apt-get update -y >/dev/null 2>&1
-  apt-get install -y debootstrap >/dev/null 2>&1
-
-  debootstrap --arch=amd64 stable "$TARGET" "$DEBIAN_MIRROR"
-
-  echo -e "${green}挂载系统目录...${plain}"
-  mount --bind /dev "$TARGET/dev"
-  mount --bind /proc "$TARGET/proc"
-  mount --bind /sys "$TARGET/sys"
-
-  echo "127.0.0.1 localhost" > "$TARGET/etc/hosts"
-
-  echo -e "${green}配置网络共享...${plain}"
-  cp /etc/resolv.conf "$TARGET/etc/resolv.conf"
-
-  echo -e "${green}chroot 环境创建完成！${plain}"
-  echo -e "👉 使用以下命令进入:\n${yellow}chroot $TARGET /bin/bash${plain}"
-  pause
-}
-
-enter_platform() {
-  echo ""
-  echo -e "请选择要进入的平台："
-  list=($(ls -1 ${BASE_DIR} | grep "^${CHROOT_PREFIX}-"))
-  if [[ ${#list[@]} -eq 0 ]]; then
-    echo -e "${red}暂无平台实例${plain}"
-    pause
+  if [[ -z "$API_HOST" || -z "$API_KEY" || -z "$NODE_ID" || -z "$CERT_DOMAIN" ]]; then
+    echo "❌ 参数不能为空"
     return
   fi
 
-  i=1
-  for name in "${list[@]}"; do
-    echo "$i. $name"
-    ((i++))
-  done
-
-  read -rp "请输入编号: " choice
-  idx=$((choice-1))
-  [[ -z "${list[$idx]}" ]] && echo -e "${red}无效编号${plain}" && return
-  TARGET="${BASE_DIR}/${list[$idx]}"
-
-  echo -e "${green}挂载系统目录中...${plain}"
-  mount --bind /dev "$TARGET/dev"
-  mount --bind /proc "$TARGET/proc"
-  mount --bind /sys "$TARGET/sys"
-
-  echo -e "${green}进入 chroot 环境: ${TARGET}${plain}"
-  echo -e "${yellow}在其中可直接执行官方 V2bX 安装命令${plain}"
-  echo -e "${yellow}退出请输入 exit${plain}"
-  chroot "$TARGET" /bin/bash
-}
-
-delete_platform() {
-  echo ""
-  echo -e "请选择要删除的平台："
-  list=($(ls -1 ${BASE_DIR} | grep "^${CHROOT_PREFIX}-"))
-  if [[ ${#list[@]} -eq 0 ]]; then
-    echo -e "${red}暂无平台实例${plain}"
-    pause
-    return
-  fi
-
-  i=1
-  for name in "${list[@]}"; do
-    echo "$i. $name"
-    ((i++))
-  done
-
-  read -rp "请输入编号: " choice
-  idx=$((choice-1))
-  [[ -z "${list[$idx]}" ]] && echo -e "${red}无效编号${plain}" && return
-  TARGET="${BASE_DIR}/${list[$idx]}"
-
-  echo -e "${yellow}确认删除 ${TARGET} ? 此操作不可恢复！(y/N):${plain} "
-  read -r confirm
-  if [[ "$confirm" =~ ^[Yy]$ ]]; then
-    umount -lf "$TARGET/dev" 2>/dev/null
-    umount -lf "$TARGET/proc" 2>/dev/null
-    umount -lf "$TARGET/sys" 2>/dev/null
-    rm -rf "$TARGET"
-    echo -e "${green}已删除平台 ${TARGET}${plain}"
+  if [[ "$NODE_TYPE" == "ss" ]]; then
+    NODE_TYPE_FULL="shadowsocks"
+    TCP="true"
   else
-    echo "已取消"
+    NODE_TYPE_FULL="hysteria2"
+    TCP="false"
   fi
-  pause
+
+  NEW_NODE=$(cat <<EOF
+{
+  "Core": "sing",
+  "ApiHost": "$API_HOST",
+  "ApiKey": "$API_KEY",
+  "NodeID": $NODE_ID,
+  "NodeType": "$NODE_TYPE_FULL",
+  "Timeout": 30,
+  "ListenIP": "0.0.0.0",
+  "SendIP": "0.0.0.0",
+  "DeviceOnlineMinTraffic": 200,
+  "MinReportTraffic": 0,
+  "TCPFastOpen": $TCP,
+  "SniffEnabled": true,
+  "CertConfig": {
+    "CertMode": "http",
+    "RejectUnknownSni": false,
+    "CertDomain": "$CERT_DOMAIN",
+    "CertFile": "/etc/V2bX/fullchain.cer",
+    "KeyFile": "/etc/V2bX/cert.key",
+    "Email": "v2bx@github.com",
+    "Provider": "cloudflare",
+    "DNSEnv": { "EnvName": "env1" }
+  }
+}
+EOF
+)
+
+  jq ".Nodes += [$NEW_NODE]" "$CONFIG_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$CONFIG_FILE"
+  echo "✅ 节点已添加成功！"
 }
 
-main_menu() {
-  check_root
-  clear
-  echo -e "${green}==============================${plain}"
-  echo -e "     V2bX 多平台 chroot 管理器"
-  echo -e "${green}==============================${plain}"
-  echo -e "1. 创建新平台实例"
-  echo -e "2. 进入平台终端"
-  echo -e "3. 删除平台实例"
-  echo -e "4. 查看所有平台"
-  echo -e "5. 退出"
-  echo ""
-
-  read -rp "请选择 [1-5]: " num
-  case "$num" in
-    1) create_platform ;;
-    2) enter_platform ;;
-    3) delete_platform ;;
-    4) list_platforms; pause ;;
-    5) exit 0 ;;
-    *) echo -e "${red}无效选项${plain}"; pause ;;
-  esac
+delete_node() {
+  list_nodes
+  read -rp "请输入要删除的节点序号: " IDX
+  if [[ -z "$IDX" ]]; then
+    echo "❌ 未输入编号"
+    return
+  fi
+  IDX=$((IDX-1))
+  jq "del(.Nodes[$IDX])" "$CONFIG_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$CONFIG_FILE"
+  echo "🗑️ 节点已删除！"
 }
 
+restart_v2bx() {
+  echo "🔁 正在重启 V2bX..."
+  systemctl restart V2bX
+  sleep 2
+  systemctl status V2bX --no-pager | grep Active
+}
+
+# === 主菜单 ===
 while true; do
-  main_menu
+  clear
+  echo "=============================="
+  echo "        🧩 V2bX 平台管理菜单"
+  echo "=============================="
+  echo "1️⃣  查看所有节点"
+  echo "2️⃣  添加新节点"
+  echo "3️⃣  删除节点"
+  echo "4️⃣  重启 V2bX 服务"
+  echo "5️⃣  查看实时日志"
+  echo "0️⃣  退出"
+  echo "=============================="
+  read -rp "请输入选项 [0-5]: " CHOICE
+  case "$CHOICE" in
+    1) list_nodes; read -rp "按回车返回菜单..." ;;
+    2) add_node; restart_v2bx; read -rp "按回车返回菜单..." ;;
+    3) delete_node; restart_v2bx; read -rp "按回车返回菜单..." ;;
+    4) restart_v2bx; read -rp "按回车返回菜单..." ;;
+    5) journalctl -u V2bX -f ;;
+    0) echo "已退出。"; exit 0 ;;
+    *) echo "❌ 无效选项"; sleep 1 ;;
+  esac
 done
