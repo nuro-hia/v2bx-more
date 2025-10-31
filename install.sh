@@ -193,9 +193,8 @@ uninstall_v2bx() {
 # 重启服务
 restart_v2bx() {
   echo "🔁 正在重启 V2bX..."
-  systemctl restart V2bX
+  V2bX restart
   sleep 2
-  systemctl status V2bX --no-pager | grep Active
 }
 
 # === 主菜单 ===
@@ -204,17 +203,17 @@ while true; do
   echo "=============================="
   echo "       🌿 V2bX 多平台管理菜单"
   echo "=============================="
-  echo "1) 安装 V2bX"
-  echo "2) 添加新节点"
-  echo "3) 删除节点"
-  echo "4) 查看所有节点"
-  echo "5) 备份配置"
-  echo "6) 恢复配置"
-  echo "7) 删除备份文件"
-  echo "8) 重启 V2bX"
-  echo "9) 查看实时日志"
-  echo "10) 卸载 V2bX"
-  echo "0) 退出菜单"
+  echo "1️⃣  安装 V2bX"
+  echo "2️⃣  添加新节点"
+  echo "3️⃣  删除节点"
+  echo "4️⃣  查看所有节点"
+  echo "5️⃣  备份配置"
+  echo "6️⃣  恢复配置"
+  echo "7️⃣  删除备份文件"
+  echo "8️⃣  重启 V2bX"
+  echo "9️⃣  查看实时日志"
+  echo "🔟  卸载 V2bX"
+  echo "0️⃣  退出菜单"
   echo "=============================="
   read -rp "请输入选项 [0-10]: " CHOICE
   case "$CHOICE" in
