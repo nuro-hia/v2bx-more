@@ -212,7 +212,7 @@ while true; do
   echo "7️⃣  删除备份文件"
   echo "8️⃣  重启 V2bX"
   echo "9️⃣  查看实时日志"
-  echo "🔟  卸载 V2bX"
+  echo "🔟   卸载 V2bX"
   echo "0️⃣  退出菜单"
   echo "=============================="
   read -rp "请输入选项 [0-10]: " CHOICE
