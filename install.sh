@@ -43,12 +43,12 @@ list_nodes() {
     return
   fi
   echo "📋 当前节点列表："
-  echo "序号 | NodeID | 类型 | 面板地址 | 域名"
-  echo "---------------------------------------------"
-  jq -r '.Nodes[] | "\(.NodeID) | \(.NodeType) | \(.ApiHost) | \(.CertConfig.CertDomain)"' "$CONFIG_FILE" | nl -w2 -s'. '
+  echo "序号 | NodeID | Core | 类型 | 面板地址 | 域名"
+  echo "--------------------------------------------------------------"
+  jq -r '.Nodes[] | "\(.NodeID) | \(.Core) | \(.NodeType) | \(.ApiHost) | \(.CertConfig.CertDomain // "-")"' "$CONFIG_FILE" | nl -w2 -s'. '
 }
 
-# 添加节点
+# 添加节点（先选核心 xray/sing）
 add_node() {
   if ! check_v2bx; then
     echo "❌ 未检测到 V2bX，请先安装。"
@@ -61,20 +61,37 @@ add_node() {
 
   check_jq
   mkdir -p "$(dirname "$CONFIG_FILE")"
+
+  # 初始化配置文件骨架，避免只有 Nodes 导致其它字段丢失
   if [[ ! -f "$CONFIG_FILE" ]]; then
-    echo '{"Nodes":[]}' >"$CONFIG_FILE"
+    cat >"$CONFIG_FILE" <<'EOF'
+{
+  "Log": {},
+  "Cores": [],
+  "Nodes": []
+}
+EOF
   fi
 
   echo "=============================="
   echo "⚙️  添加新节点"
   echo "=============================="
+
+  # ✅ 先选核心
+  read -rp "🧠 选择核心 [xray/sing] (默认 xray): " CORE_TYPE
+  CORE_TYPE=${CORE_TYPE:-xray}
+  case "$CORE_TYPE" in
+    xray|sing) ;;
+    *) echo "❌ 无效核心：$CORE_TYPE"; return ;;
+  esac
+
   read -rp "📦 节点类型 [ss/hy2/trojan] (默认 ss): " NODE_TYPE
   NODE_TYPE=${NODE_TYPE:-ss}
 
   case "$NODE_TYPE" in
     ss) NODE_TYPE_FULL="shadowsocks"; TCP="true" ;;
-    hy2) NODE_TYPE_FULL="hysteria2"; TCP="false" ;;
-    trojan) NODE_TYPE_FULL="trojan"; TCP="true" ;;
+    hy2) NODE_TYPE_FULL="hysteria2";  TCP="false" ;;
+    trojan) NODE_TYPE_FULL="trojan";  TCP="true" ;;
     *) echo "❌ 无效类型"; return ;;
   esac
 
@@ -88,7 +105,39 @@ add_node() {
     return
   fi
 
-  NEW_NODE=$(cat <<EOF
+  if [[ "$CORE_TYPE" == "xray" ]]; then
+    # xray 节点格式（对齐你现有配置）
+    NEW_NODE=$(cat <<EOF
+{
+  "Core": "xray",
+  "ApiHost": "$API_HOST",
+  "ApiKey": "$API_KEY",
+  "NodeID": $NODE_ID,
+  "NodeType": "$NODE_TYPE_FULL",
+  "Timeout": 30,
+  "ListenIP": "0.0.0.0",
+  "SendIP": "0.0.0.0",
+  "DeviceOnlineMinTraffic": 1000,
+  "EnableProxyProtocol": false,
+  "EnableUot": true,
+  "EnableTFO": true,
+  "DNSType": "UseIPv4",
+  "CertConfig": {
+    "CertMode": "http",
+    "RejectUnknownSni": false,
+    "CertDomain": "$CERT_DOMAIN",
+    "CertFile": "/etc/V2bX/fullchain.cer",
+    "KeyFile": "/etc/V2bX/cert.key",
+    "Email": "v2bx@github.com",
+    "Provider": "cloudflare",
+    "DNSEnv": { "EnvName": "env1" }
+  }
+}
+EOF
+)
+  else
+    # sing 节点格式
+    NEW_NODE=$(cat <<EOF
 {
   "Core": "sing",
   "ApiHost": "$API_HOST",
@@ -115,8 +164,10 @@ add_node() {
 }
 EOF
 )
+  fi
+
   jq ".Nodes += [$NEW_NODE]" "$CONFIG_FILE" >"$TEMP_FILE" && mv "$TEMP_FILE" "$CONFIG_FILE"
-  echo "✅ 节点添加成功。"
+  echo "✅ 节点添加成功（Core=$CORE_TYPE）。"
   restart_v2bx
 }
 
