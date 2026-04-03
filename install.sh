@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================
-#  🌿 V2bX 多平台管理菜单（ss / hy2 / trojan）
+#  🌿 V2bX 多平台管理菜单（ss / hy2 / trojan / vless）
 #  作者: nuro 定制版
 # ==========================================
 
@@ -48,7 +48,7 @@ list_nodes() {
   jq -r '.Nodes[] | "\(.NodeID) | \(.Core) | \(.NodeType) | \(.ApiHost) | \(.CertConfig.CertDomain // "-")"' "$CONFIG_FILE" | nl -w2 -s'. '
 }
 
-# 添加节点（先选核心 xray/sing）
+# 添加节点
 add_node() {
   if ! check_v2bx; then
     echo "❌ 未检测到 V2bX，请先安装。"
@@ -62,7 +62,6 @@ add_node() {
   check_jq
   mkdir -p "$(dirname "$CONFIG_FILE")"
 
-  # 初始化配置文件骨架，避免只有 Nodes 导致其它字段丢失
   if [[ ! -f "$CONFIG_FILE" ]]; then
     cat >"$CONFIG_FILE" <<'EOF'
 {
@@ -77,36 +76,94 @@ EOF
   echo "⚙️  添加新节点"
   echo "=============================="
 
-  # ✅ 先选核心
-  read -rp "🧠 选择核心 [xray/sing] (默认 xray): " CORE_TYPE
-  CORE_TYPE=${CORE_TYPE:-xray}
-  case "$CORE_TYPE" in
-    xray|sing) ;;
-    *) echo "❌ 无效核心：$CORE_TYPE"; return ;;
-  esac
+  while true; do
+    echo "🧠 请选择要使用的核心:"
+    echo "  1) sing (默认)"
+    echo "  2) xray"
+    read -rp "请输入编号 [1-2]: " CORE_CHOICE
+    if [[ -z "$CORE_CHOICE" || "$CORE_CHOICE" == "1" ]]; then
+      CORE_TYPE="sing"
+      break
+    elif [[ "$CORE_CHOICE" == "2" ]]; then
+      CORE_TYPE="xray"
+      break
+    else
+      echo "❌ 无效输入，请重新选择。"
+      echo ""
+    fi
+  done
 
-  read -rp "📦 节点类型 [ss/hy2/trojan] (默认 ss): " NODE_TYPE
-  NODE_TYPE=${NODE_TYPE:-ss}
+  # 2. 选择节点类型 (严格数字校验，sing 支持 vless)
+  while true; do
+    echo ""
+    echo "📦 请选择节点类型:"
+    if [[ "$CORE_TYPE" == "sing" ]]; then
+      echo "  1) ss (默认)"
+      echo "  2) vless"
+      echo "  3) hy2"
+      echo "  4) trojan"
+      read -rp "请输入编号 [1-4]: " NODE_CHOICE
+      if [[ -z "$NODE_CHOICE" || "$NODE_CHOICE" == "1" ]]; then
+        NODE_TYPE="ss"
+        break
+      elif [[ "$NODE_CHOICE" == "2" ]]; then
+        NODE_TYPE="vless"
+        break
+      elif [[ "$NODE_CHOICE" == "3" ]]; then
+        NODE_TYPE="hy2"
+        break
+      elif [[ "$NODE_CHOICE" == "4" ]]; then
+        NODE_TYPE="trojan"
+        break
+      else
+        echo "❌ 无效输入，请重新选择。"
+      fi
+    else
+      echo "  1) ss (默认)"
+      echo "  2) hy2"
+      echo "  3) trojan"
+      read -rp "请输入编号 [1-3]: " NODE_CHOICE
+      if [[ -z "$NODE_CHOICE" || "$NODE_CHOICE" == "1" ]]; then
+        NODE_TYPE="ss"
+        break
+      elif [[ "$NODE_CHOICE" == "2" ]]; then
+        NODE_TYPE="hy2"
+        break
+      elif [[ "$NODE_CHOICE" == "3" ]]; then
+        NODE_TYPE="trojan"
+        break
+      else
+        echo "❌ 无效输入，请重新选择。"
+      fi
+    fi
+  done
 
   case "$NODE_TYPE" in
-    ss) NODE_TYPE_FULL="shadowsocks"; TCP="true" ;;
-    hy2) NODE_TYPE_FULL="hysteria2";  TCP="false" ;;
-    trojan) NODE_TYPE_FULL="trojan";  TCP="true" ;;
-    *) echo "❌ 无效类型"; return ;;
+    ss)     NODE_TYPE_FULL="shadowsocks"; TCP="true";  CERT_MODE="http"; LISTEN_IP="0.0.0.0" ;;
+    hy2)    NODE_TYPE_FULL="hysteria2";   TCP="false"; CERT_MODE="http"; LISTEN_IP="0.0.0.0" ;;
+    trojan) NODE_TYPE_FULL="trojan";      TCP="true";  CERT_MODE="http"; LISTEN_IP="0.0.0.0" ;;
+    vless)  NODE_TYPE_FULL="vless";       TCP="true";  CERT_MODE="none"; LISTEN_IP="::"      ;;
   esac
 
-  read -rp "🪧 面板地址: " API_HOST
+  echo ""
+  read -rp "🪧 面板地址 (例: https://api.domain.com): " API_HOST
   read -rp "🔑 API Key: " API_KEY
   read -rp "🆔 节点 ID: " NODE_ID
-  read -rp "🌐 节点域名: " CERT_DOMAIN
+  
+
+  if [[ "$NODE_TYPE" == "vless" ]]; then
+      CERT_DOMAIN="example.com"
+  else
+      read -rp "🌐 节点域名: " CERT_DOMAIN
+  fi
 
   if [[ -z "$API_HOST" || -z "$API_KEY" || -z "$NODE_ID" || -z "$CERT_DOMAIN" ]]; then
-    echo "❌ 参数不能为空。"
+    echo "❌ 参数不能为空，添加失败。"
     return
   fi
 
+  # 4. JSON 配置写入（完美对齐您的原版骨架格式）
   if [[ "$CORE_TYPE" == "xray" ]]; then
-    # xray 节点格式（对齐你现有配置）
     NEW_NODE=$(cat <<EOF
 {
   "Core": "xray",
@@ -115,7 +172,7 @@ EOF
   "NodeID": $NODE_ID,
   "NodeType": "$NODE_TYPE_FULL",
   "Timeout": 30,
-  "ListenIP": "0.0.0.0",
+  "ListenIP": "$LISTEN_IP",
   "SendIP": "0.0.0.0",
   "DeviceOnlineMinTraffic": 1000,
   "EnableProxyProtocol": false,
@@ -123,7 +180,7 @@ EOF
   "EnableTFO": true,
   "DNSType": "UseIPv4",
   "CertConfig": {
-    "CertMode": "http",
+    "CertMode": "$CERT_MODE",
     "RejectUnknownSni": false,
     "CertDomain": "$CERT_DOMAIN",
     "CertFile": "/etc/V2bX/fullchain.cer",
@@ -136,7 +193,6 @@ EOF
 EOF
 )
   else
-    # sing 节点格式
     NEW_NODE=$(cat <<EOF
 {
   "Core": "sing",
@@ -145,14 +201,14 @@ EOF
   "NodeID": $NODE_ID,
   "NodeType": "$NODE_TYPE_FULL",
   "Timeout": 30,
-  "ListenIP": "0.0.0.0",
+  "ListenIP": "$LISTEN_IP",
   "SendIP": "0.0.0.0",
   "DeviceOnlineMinTraffic": 200,
   "MinReportTraffic": 0,
   "TCPFastOpen": $TCP,
   "SniffEnabled": true,
   "CertConfig": {
-    "CertMode": "http",
+    "CertMode": "$CERT_MODE",
     "RejectUnknownSni": false,
     "CertDomain": "$CERT_DOMAIN",
     "CertFile": "/etc/V2bX/fullchain.cer",
@@ -167,7 +223,7 @@ EOF
   fi
 
   jq ".Nodes += [$NEW_NODE]" "$CONFIG_FILE" >"$TEMP_FILE" && mv "$TEMP_FILE" "$CONFIG_FILE"
-  echo "✅ 节点添加成功（Core=$CORE_TYPE）。"
+  echo "✅ 节点 ($NODE_TYPE_FULL) 添加成功（Core=$CORE_TYPE）。"
   restart_v2bx
 }
 
@@ -225,7 +281,7 @@ delete_backup() {
   echo "✅ 已删除：${FILES[$((IDX - 1))]}"
 }
 
-# 卸载 V2bX + jq
+# 卸载 V2bX
 uninstall_v2bx() {
   if check_v2bx; then
     echo "⚠️ 正在卸载 V2bX ..."
@@ -252,7 +308,7 @@ restart_v2bx() {
 while true; do
   clear
   echo "=============================="
-  echo "       🌿 V2bX 多平台管理菜单"
+  echo "        🌿 V2bX 多平台管理菜单"
   echo "=============================="
   echo "1) 安装 V2bX"
   echo "2) 添加新节点"
