@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================
-#  🌿 V2bX 多平台管理菜单（ss / hy2 / trojan / vless）
+#  🌿 V2bX 多平台管理菜单（ss / hy2 / trojan / vless / anytls）
 #  作者: nuro 定制版
 # ==========================================
 
@@ -93,7 +93,7 @@ EOF
     fi
   done
 
-  # 2. 选择节点类型 (严格数字校验，sing 支持 vless)
+  # 2. 选择节点类型 (严格数字校验)
   while true; do
     echo ""
     echo "📦 请选择节点类型:"
@@ -102,7 +102,8 @@ EOF
       echo "  2) vless"
       echo "  3) hy2"
       echo "  4) trojan"
-      read -rp "请输入编号 [1-4]: " NODE_CHOICE
+      echo "  5) anytls"
+      read -rp "请输入编号 [1-5]: " NODE_CHOICE
       if [[ -z "$NODE_CHOICE" || "$NODE_CHOICE" == "1" ]]; then
         NODE_TYPE="ss"
         break
@@ -114,6 +115,9 @@ EOF
         break
       elif [[ "$NODE_CHOICE" == "4" ]]; then
         NODE_TYPE="trojan"
+        break
+      elif [[ "$NODE_CHOICE" == "5" ]]; then
+        NODE_TYPE="anytls"
         break
       else
         echo "❌ 无效输入，请重新选择。"
@@ -138,11 +142,13 @@ EOF
     fi
   done
 
+  # 严格参数映射
   case "$NODE_TYPE" in
     ss)     NODE_TYPE_FULL="shadowsocks"; TCP="true";  CERT_MODE="http"; LISTEN_IP="0.0.0.0" ;;
     hy2)    NODE_TYPE_FULL="hysteria2";   TCP="false"; CERT_MODE="http"; LISTEN_IP="0.0.0.0" ;;
     trojan) NODE_TYPE_FULL="trojan";      TCP="true";  CERT_MODE="http"; LISTEN_IP="0.0.0.0" ;;
     vless)  NODE_TYPE_FULL="vless";       TCP="true";  CERT_MODE="none"; LISTEN_IP="::"      ;;
+    anytls) NODE_TYPE_FULL="anytls";      TCP="false"; CERT_MODE="http"; LISTEN_IP="::"      ;;
   esac
 
   echo ""
@@ -150,7 +156,6 @@ EOF
   read -rp "🔑 API Key: " API_KEY
   read -rp "🆔 节点 ID: " NODE_ID
   
-
   if [[ "$NODE_TYPE" == "vless" ]]; then
       CERT_DOMAIN="example.com"
   else
@@ -162,7 +167,7 @@ EOF
     return
   fi
 
-  # 4. JSON 配置写入（完美对齐您的原版骨架格式）
+  # 4. JSON 配置写入
   if [[ "$CORE_TYPE" == "xray" ]]; then
     NEW_NODE=$(cat <<EOF
 {
