@@ -145,7 +145,7 @@ EOF
   # 严格参数映射
   case "$NODE_TYPE" in
     ss)     NODE_TYPE_FULL="shadowsocks"; TCP="true";  CERT_MODE="http"; LISTEN_IP="0.0.0.0" ;;
-    hy2)    NODE_TYPE_FULL="hysteria2";   TCP="false"; CERT_MODE="http"; LISTEN_IP="0.0.0.0" ;;
+    hy2)    NODE_TYPE_FULL="hysteria2";   TCP="false"; CERT_MODE="http"; LISTEN_IP="::" ;;
     trojan) NODE_TYPE_FULL="trojan";      TCP="true";  CERT_MODE="http"; LISTEN_IP="0.0.0.0" ;;
     vless)  NODE_TYPE_FULL="vless";       TCP="true";  CERT_MODE="none"; LISTEN_IP="::"      ;;
     anytls) NODE_TYPE_FULL="anytls";      TCP="false"; CERT_MODE="http"; LISTEN_IP="::"      ;;
