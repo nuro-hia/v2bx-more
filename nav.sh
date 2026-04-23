@@ -1,7 +1,7 @@
 #!/bin/bash
 # ================================================
 # Xboard-Node systemd 原生版 管理面板（Naive 专用）
-# 【核弹级修复】强制接管配置生成，封杀所有特殊字符转义
+# 纯净对接 dev 分支 / 兼容高强度密钥
 # ================================================
 
 RED='\033[0;31m'
@@ -37,12 +37,12 @@ install_dependencies() {
 show_menu() {
     clear
     echo -e "${BLUE}=======================================${NC}"
-    echo -e "   🚀 Xboard-Node 管理面板（Naive 终极防弹版）"
+    echo -e "   🚀 Xboard-Node 管理面板（原生 Dev 分支版）"
     echo -e "${BLUE}=======================================${NC}"
-    echo "1. 安装 / 重新对接节点 (彻底解决 Token 报错)"
+    echo "1. 安装 / 重新对接节点"
     echo "2. 重启节点服务"
     echo "3. 停止节点服务"
-    echo "4. 查看实时崩溃日志"
+    echo "4. 查看实时日志"
     echo "5. 查看节点运行状态"
     echo "6. 彻底卸载 (纯净物理抹除)"
     echo "7. 手动修改配置文件"
@@ -51,50 +51,11 @@ show_menu() {
     read -p "请输入选项 (1-8): " choice </dev/tty
 }
 
-# 暴力重写配置文件，杜绝上游脚本的转义 BUG
-force_write_config() {
-    local panel="$1"
-    local token="$2"
-    local nodeid="$3"
-
-    print_info "正在暴力重写配置文件，锁定强引用格式..."
-
-    # 使用 printf 配合单引号，确保 $ 和 # 被当做纯文本处理
-    sudo mkdir -p /etc/xboard-node
-    
-    # 1. 重写 config.yml
-    cat > /etc/xboard-node/config.yml << EOF
-nodes:
-  - panel: '$panel'
-    token: '$token'
-    node_id: $nodeid
-EOF
-
-    # 2. 重写 credentials.env (双重保险)
-    cat > /etc/xboard-node/credentials.env << EOF
-XBOARD_PANEL_URL='$panel'
-XBOARD_PANEL_TOKEN='$token'
-XBOARD_NODE_ID=$nodeid
-EOF
-
-    chmod 600 /etc/xboard-node/config.yml /etc/xboard-node/credentials.env
-    
-    print_info "配置文件已重构。正在尝试拉起服务..."
-    systemctl restart xboard-node
-    sleep 2
-    
-    if systemctl is-active --quiet xboard-node; then
-        print_success "节点已成功拉起！Token 识别正常。"
-    else
-        print_error "启动依然失败，请选 4 查看最新报错。"
-    fi
-}
-
 install_node() {
     install_dependencies
-    print_info "=== 开始安装 Xboard-Node (Naive 稳定版) ==="
+    print_info "=== 开始安装 Xboard-Node (Naive 专属) ==="
     
-    # 使用 -r 确保输入的特殊符号不被 shell 预处理
+    # 核心防御：-r 参数保证复杂密钥在输入阶段不被 Bash 解析
     read -r -p "请输入面板地址 (https://你的域名): " PANEL </dev/tty
     read -r -p "请输入通讯密钥 (Token): " TOKEN </dev/tty
     read -r -p "请输入节点ID (数字): " NODEID </dev/tty
@@ -104,14 +65,15 @@ install_node() {
         return
     fi
 
-    print_info "正在执行官方基础安装..."
-    # 我们依然调用官方脚本拉取二进制，但不再信任它的配置生成
-    if curl -fsSL https://raw.githubusercontent.com/cedar2025/xboard-node/master/install.sh | sudo bash -s -- --mode node --panel "$PANEL" --token "temp_token" --node-id "$NODEID"; then
+    print_info "正在拉取上游 dev 分支核心..."
+    
+    # 直接将真实的 TOKEN 交给官方 dev 脚本处理，不做任何阻拦
+    if curl -fsSL https://raw.githubusercontent.com/cedar2025/xboard-node/dev/install.sh | sudo bash -s -- --mode node --panel "$PANEL" --token "$TOKEN" --node-id "$NODEID"; then
         hash -r 
-        # 核心步骤：立刻执行我们的暴力覆盖函数
-        force_write_config "$PANEL" "$TOKEN" "$NODEID"
+        print_success "节点核心部署完成！"
+        print_warn "如果日志依然提示 404 handshake，说明 Xboard 面板端未开启或未兼容 V2 路由，请排查面板 Nginx 配置。"
     else
-        print_error "官方脚本拉取失败，请检查网络。"
+        print_error "官方安装流程遭遇异常，已被迫中止。"
     fi
 }
 
