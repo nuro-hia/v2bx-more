@@ -1,123 +1,144 @@
 #!/bin/bash
-# Xboard-Node 管理终端 (支持 ss/hy2/trojan 原生对接)
+# ================================================
+# Xboard-Node systemd 原生版 一键管理脚本（Naive 专用）
+# 作者：Grok 团队定制（2026最新版）
+# 适用于 GitHub 直接使用
+# 支持自动依赖安装 + 彻底干净卸载
+# ================================================
 
-SCRIPT_URL="https://raw.githubusercontent.com/您的用户名/您的仓库名/main/xboard.sh"
-CLI_CMD="xbmenu"
+set -e
 
-GREEN="\033[32m"
-RED="\033[31m"
-YELLOW="\033[33m"
-RESET="\033[0m"
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-if [ ! -t 0 ] && [ ! -c /dev/tty ]; then
-    echo -e "${RED}Fatal: No TTY attached.${RESET}"
+print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# 检查 root 权限
+if [ "$(id -u)" -ne 0 ]; then
+    print_error "请使用 root 或 sudo 运行此脚本！"
     exit 1
 fi
 
-for pkg in curl sudo nano; do
-    if ! command -v $pkg >/dev/null 2>&1; then
-        (apt-get update && apt-get install -y $pkg) >/dev/null 2>&1 || (yum install -y $pkg) >/dev/null 2>&1
+# 自动安装依赖
+install_dependencies() {
+    print_info "正在检查并安装必要依赖..."
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -qq
+        apt-get install -y -qq curl wget ca-certificates
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y curl wget ca-certificates
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y curl wget ca-certificates
+    else
+        print_warn "无法识别包管理器，请手动安装 curl wget ca-certificates"
     fi
-done
-
-if ! command -v $CLI_CMD >/dev/null 2>&1 && [[ "$0" != "/usr/local/bin/$CLI_CMD" ]]; then
-    if curl -fsSL "$SCRIPT_URL" -o /usr/local/bin/$CLI_CMD; then
-        chmod +x /usr/local/bin/$CLI_CMD
-        echo -e "${GREEN}✅ 面板已固化。全局命令: ${CLI_CMD}${RESET}"
-    fi
-fi
-
-get_xbctl() {
-    if [ -x "/usr/local/bin/xbctl" ]; then
-        echo "/usr/local/bin/xbctl"
-    elif command -v xbctl >/dev/null 2>&1; then
-        command -v xbctl
-    fi
+    print_success "依赖安装完成"
 }
 
-check_xbctl() {
-    if [ -z "$(get_xbctl)" ]; then
-        echo -e "${RED}未检测到 xbctl，请先执行安装。${RESET}"
-        return 1
-    fi
-    return 0
-}
-
+# 显示菜单
 show_menu() {
     clear
-    echo "================================================="
-    echo -e "   ${GREEN}Xboard-Node 管理终端${RESET}"
-    echo "================================================="
-    echo "1. 安装并对接节点"
-    echo "2. 重启节点服务"
-    echo "3. 停止节点服务"
+    echo -e "${BLUE}=======================================${NC}"
+    echo -e "   🚀 Xboard-Node systemd 管理脚本（Naive 专用）"
+    echo -e "${BLUE}=======================================${NC}"
+    echo "1. 安装 / 重新对接节点（首次使用）"
+    echo "2. 重启节点"
+    echo "3. 停止节点"
     echo "4. 查看实时日志"
-    echo "5. 更新节点程序"
-    echo "6. 彻底卸载节点 (底层清理)"
-    echo "7. 修改配置文件"
-    echo "8. 退出"
-    echo "================================================="
-    read -p "请输入指令编号 (1-8): " choice </dev/tty
+    echo "5. 查看节点状态"
+    echo "6. 更新节点到最新版"
+    echo "7. 修改配置（面板地址/密钥/NodeID）"
+    echo "8. 彻底卸载（干净删除所有文件）"
+    echo "9. 退出"
+    echo -e "${BLUE}=======================================${NC}"
+    read -p "请输入选项 (1-9): " choice
 }
 
+# 安装节点
 install_node() {
-    read -p "面板地址 (如 https://panel.com): " PANEL </dev/tty
-    read -p "通讯密钥 (Token): " TOKEN </dev/tty
-    read -p "节点ID (数字): " NODEID </dev/tty
+    install_dependencies
+    print_info "=== 开始安装 Xboard-Node（systemd 原生版）==="
+    read -p "请输入面板地址 (https://你的域名): " PANEL
+    read -p "请输入通讯密钥 (ApiKey/Token): " TOKEN
+    read -p "请输入节点ID (数字): " NODEID
 
-    if [[ -z "$PANEL" || -z "$TOKEN" || -z "$NODEID" ]]; then
-        echo -e "${RED}参数不可为空。${RESET}"
-        return
-    fi
+    print_info "正在调用官方安装脚本..."
+    curl -fsSL https://raw.githubusercontent.com/cedar2025/xboard-node/dev/install.sh | \
+      sudo bash -s -- --mode node \
+      --panel "$PANEL" \
+      --token "$TOKEN" \
+      --node-id "$NODEID"
 
-    if curl -fsSL https://raw.githubusercontent.com/cedar2025/xboard-node/dev/install.sh | sudo bash -s -- --mode node --panel "$PANEL" --token "$TOKEN" --node-id "$NODEID"; then
-        hash -r 
-        source /etc/profile >/dev/null 2>&1
-        echo -e "${GREEN}✅ 部署指令下发完成！若日志提示 404，请检查面板端伪静态。${RESET}"
-    else
-        echo -e "${RED}❌ 安装异常退出。${RESET}"
-    fi
+    print_success "✅ 安装完成！"
+    print_info "请在 Xboard 后台 → 节点管理 刷新状态（应显示在线）"
+    print_info "Naive 节点需在面板里把协议类型设为 Naive（sing-box 内核自动支持）"
 }
 
-edit_config() {
-    CONFIG_PATHS=("/etc/xboard-node/config.yml" "/usr/local/xboard-node/config.yml" "/opt/xboard-node/config.yml")
-    for path in "${CONFIG_PATHS[@]}"; do
-        if [ -f "$path" ]; then
-            sudo nano "$path" </dev/tty
-            return
-        fi
-    done
-    echo -e "${RED}❌ 未找到配置文件。${RESET}"
-}
+case "$1" in
+    install|1)
+        install_node
+        ;;
+    *)
+        while true; do
+            show_menu
+            case $choice in
+                1) install_node ;;
+                2)
+                    systemctl restart xboard-node && print_success "✅ 节点已重启"
+                    ;;
+                3)
+                    systemctl stop xboard-node && print_success "✅ 节点已停止"
+                    ;;
+                4)
+                    journalctl -u xboard-node -f
+                    ;;
+                5)
+                    systemctl status xboard-node --no-pager
+                    xbctl status 2>/dev/null || print_info "使用 systemctl 查看"
+                    ;;
+                6)
+                    print_info "正在更新..."
+                    # 官方支持通过重新安装实现更新
+                    install_node
+                    ;;
+                7)
+                    print_info "打开配置文件（nano）..."
+                    nano /etc/xboard-node/config.yml
+                    print_info "修改完成后请选 2 重启节点"
+                    ;;
+                8)
+                    print_warn "⚠️ 即将彻底卸载（删除所有文件和服务）"
+                    read -p "确认卸载？(y/N): " confirm
+                    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                        print_info "停止并禁用服务..."
+                        systemctl stop xboard-node 2>/dev/null || true
+                        systemctl disable xboard-node 2>/dev/null || true
+                        rm -f /etc/systemd/system/xboard-node.service
+                        systemctl daemon-reload
 
-# 物理级抹除逻辑，直接绕过无能的 xbctl
-uninstall_node() {
-    echo -e "${YELLOW}正在接管系统内核，执行物理级抹除...${RESET}"
-    sudo systemctl stop xboard-node >/dev/null 2>&1
-    sudo systemctl disable xboard-node >/dev/null 2>&1
-    sudo rm -f /etc/systemd/system/xboard-node.service
-    sudo systemctl daemon-reload
-    sudo rm -rf /etc/xboard-node
-    XB_PATH=$(get_xbctl)
-    if [ -n "$XB_PATH" ]; then
-        sudo rm -f "$XB_PATH"
-    fi
-    echo -e "${GREEN}✅ 节点进程、配置及残留核心已全部摧毁。${RESET}"
-}
+                        print_info "删除二进制和 CLI..."
+                        rm -f /usr/local/bin/xboard-node /usr/local/bin/xbctl /usr/bin/xbctl
 
-while true; do
-    show_menu
-    XB=$(get_xbctl)
-    case $choice in
-        1) install_node ;;
-        2) check_xbctl && sudo "$XB" service restart && echo -e "${GREEN}✅ 已重启${RESET}" ;;
-        3) check_xbctl && sudo "$XB" service stop && echo -e "${GREEN}✅ 已停止${RESET}" ;;
-        4) check_xbctl && sudo "$XB" service logs -f </dev/tty ;;
-        5) check_xbctl && sudo "$XB" self-update && echo -e "${GREEN}✅ 已更新${RESET}" ;;
-        6) uninstall_node ;;
-        7) edit_config ;;
-        8) exit 0 ;;
-        *) echo -e "${RED}非法指令。${RESET}" ;;
-    esac
-    read -p "按回车键返回..." </dev/tty
-done
+                        print_info "删除配置目录..."
+                        rm -rf /etc/xboard-node
+
+                        print_success "✅ 彻底卸载完成！所有文件已清理干净"
+                    else
+                        print_info "已取消卸载"
+                    fi
+                    ;;
+                9) exit 0 ;;
+                *) print_error "输入错误，请重试" ;;
+            esac
+            echo ""
+            read -p "按回车键继续..."
+        done
+        ;;
+esac
