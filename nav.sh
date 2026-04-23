@@ -53,7 +53,7 @@ show_menu() {
     echo "3. 停止节点服务"
     echo "4. 查看实时日志"
     echo "5. 更新节点程序"
-    echo "6. 卸载节点及依赖"
+    echo "6. 彻底卸载节点 (底层清理)"
     echo "7. 修改配置文件"
     echo "8. 退出"
     echo "================================================="
@@ -73,7 +73,7 @@ install_node() {
     if curl -fsSL https://raw.githubusercontent.com/cedar2025/xboard-node/dev/install.sh | sudo bash -s -- --mode node --panel "$PANEL" --token "$TOKEN" --node-id "$NODEID"; then
         hash -r 
         source /etc/profile >/dev/null 2>&1
-        echo -e "${GREEN}✅ 部署指令下发完成！${RESET}"
+        echo -e "${GREEN}✅ 部署指令下发完成！若日志提示 404，请检查面板端伪静态。${RESET}"
     else
         echo -e "${RED}❌ 安装异常退出。${RESET}"
     fi
@@ -90,6 +90,21 @@ edit_config() {
     echo -e "${RED}❌ 未找到配置文件。${RESET}"
 }
 
+# 物理级抹除逻辑，直接绕过无能的 xbctl
+uninstall_node() {
+    echo -e "${YELLOW}正在接管系统内核，执行物理级抹除...${RESET}"
+    sudo systemctl stop xboard-node >/dev/null 2>&1
+    sudo systemctl disable xboard-node >/dev/null 2>&1
+    sudo rm -f /etc/systemd/system/xboard-node.service
+    sudo systemctl daemon-reload
+    sudo rm -rf /etc/xboard-node
+    XB_PATH=$(get_xbctl)
+    if [ -n "$XB_PATH" ]; then
+        sudo rm -f "$XB_PATH"
+    fi
+    echo -e "${GREEN}✅ 节点进程、配置及残留核心已全部摧毁。${RESET}"
+}
+
 while true; do
     show_menu
     XB=$(get_xbctl)
@@ -99,7 +114,7 @@ while true; do
         3) check_xbctl && sudo "$XB" service stop && echo -e "${GREEN}✅ 已停止${RESET}" ;;
         4) check_xbctl && sudo "$XB" service logs -f </dev/tty ;;
         5) check_xbctl && sudo "$XB" self-update && echo -e "${GREEN}✅ 已更新${RESET}" ;;
-        6) check_xbctl && sudo "$XB" service uninstall && echo -e "${GREEN}✅ 已卸载${RESET}" ;;
+        6) uninstall_node ;;
         7) edit_config ;;
         8) exit 0 ;;
         *) echo -e "${RED}非法指令。${RESET}" ;;
