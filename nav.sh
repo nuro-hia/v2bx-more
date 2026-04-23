@@ -1,10 +1,8 @@
 #!/bin/bash
 # ================================================
 # Xboard-Node systemd 原生版 管理面板（Naive 专用）
-# 修复 V2 API 404 断层 / 解决 curl 管道流阻断
+# 【终极防弹版】修复复杂密钥 YAML 解析截断崩溃问题
 # ================================================
-
-# 移除危险的 set -e，确保交互式菜单不死
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,7 +15,6 @@ print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# 检查 TTY 交互能力 (防 curl | bash 假死)
 if [ ! -t 0 ] && [ ! -c /dev/tty ]; then
     print_error "当前执行环境无 TTY 终端，交互阻断。"
     exit 1
@@ -30,7 +27,7 @@ fi
 
 install_dependencies() {
     print_info "正在静默检查并补全底层依赖..."
-    for pkg in curl wget ca-certificates nano; do
+    for pkg in curl wget ca-certificates nano awk; do
         if ! command -v $pkg >/dev/null 2>&1; then
             (apt-get update -qq && apt-get install -y -qq $pkg) >/dev/null 2>&1 || (yum install -y -q $pkg) >/dev/null 2>&1
         fi
@@ -40,26 +37,60 @@ install_dependencies() {
 show_menu() {
     clear
     echo -e "${BLUE}=======================================${NC}"
-    echo -e "   🚀 Xboard-Node systemd 管理面板（Naive 专用）"
+    echo -e "   🚀 Xboard-Node 管理面板（Naive 稳定防弹版）"
     echo -e "${BLUE}=======================================${NC}"
-    echo "1. 安装 / 重新对接节点 (匹配稳定版 API)"
-    echo "2. 重启节点"
-    echo "3. 停止节点"
-    echo "4. 查看实时日志"
-    echo "5. 查看节点状态"
+    echo "1. 安装 / 重新对接节点 (自动修复复杂密钥配置)"
+    echo "2. 重启节点服务"
+    echo "3. 停止节点服务"
+    echo "4. 查看实时崩溃日志"
+    echo "5. 查看节点运行状态"
     echo "6. 彻底卸载 (纯净物理抹除)"
-    echo "7. 修改配置文件"
+    echo "7. 手动修改配置文件"
     echo "8. 退出"
     echo -e "${BLUE}=======================================${NC}"
     read -p "请输入选项 (1-8): " choice </dev/tty
 }
 
+# 核心防弹注射器：强行修复上游拉胯的配置写入
+patch_config_and_restart() {
+    local token="$1"
+    print_info "正在接管配置文件，为复杂密钥穿透注入防弹衣..."
+    
+    # 修复 config.yml (使用 awk 避开特殊字符对 sed 的正则污染)
+    if [ -f /etc/xboard-node/config.yml ]; then
+        awk -v tok="$token" '/^[[:space:]]*token:/ { 
+            match($0, /^[[:space:]]*/); 
+            indent=substr($0, RSTART, RLENGTH); 
+            print indent "token: \047" tok "\047"; 
+            next 
+        }1' /etc/xboard-node/config.yml > /tmp/xb_config.yml
+        cat /tmp/xb_config.yml > /etc/xboard-node/config.yml
+        rm -f /tmp/xb_config.yml
+    fi
+
+    # 修复 credentials.env
+    if [ -f /etc/xboard-node/credentials.env ]; then
+        echo "XBOARD_PANEL_TOKEN='${token}'" > /etc/xboard-node/credentials.env
+    fi
+
+    # 强行重启生效
+    systemctl restart xboard-node
+    sleep 2
+    if systemctl is-active --quiet xboard-node; then
+        print_success "节点已成功启动！高强度密钥解析通过。"
+    else
+        print_error "节点启动依然异常，请按 4 查看日志。"
+    fi
+}
+
 install_node() {
     install_dependencies
     print_info "=== 开始安装 Xboard-Node (Naive 稳定版) ==="
-    read -p "请输入面板地址 (https://你的域名): " PANEL </dev/tty
-    read -p "请输入通讯密钥 (ApiKey/Token): " TOKEN </dev/tty
-    read -p "请输入节点ID (数字): " NODEID </dev/tty
+    
+    # 修复点 1：必须加上 -r 参数，防止输入流中的反斜杠被 bash 吃掉
+    read -r -p "请输入面板地址 (https://你的域名): " PANEL </dev/tty
+    read -r -p "请输入通讯密钥 (ApiKey/Token): " TOKEN </dev/tty
+    read -r -p "请输入节点ID (数字): " NODEID </dev/tty
 
     if [[ -z "$PANEL" || -z "$TOKEN" || -z "$NODEID" ]]; then
         print_error "配置不可为空，中止操作。"
@@ -67,10 +98,10 @@ install_node() {
     fi
 
     print_info "正在拉取上游核心 (Master分支)..."
-    # 核心降维打击：强行锁定 master 分支，彻底规避 dev 带来的 404 代差
     if curl -fsSL https://raw.githubusercontent.com/cedar2025/xboard-node/master/install.sh | sudo bash -s -- --mode node --panel "$PANEL" --token "$TOKEN" --node-id "$NODEID"; then
         hash -r 
-        print_success "安装成功！配置已下发。"
+        # 修复点 2：官方装完必定崩溃，我们直接调用函数暴力覆写配置并重启
+        patch_config_and_restart "$TOKEN"
         print_info "请前往 Xboard 后台确认节点在线状态。"
     else
         print_error "拉取上游核心失败，请检查网络。"
@@ -99,7 +130,7 @@ while true; do
         5) systemctl status xboard-node --no-pager ;;
         6)
             print_warn "⚠️ 即将执行内核级物理摧毁"
-            read -p "确认彻底抹除？(y/N): " confirm </dev/tty
+            read -r -p "确认彻底抹除？(y/N): " confirm </dev/tty
             if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
                 print_info "撕毁守护进程..."
                 systemctl stop xboard-node >/dev/null 2>&1 || true
@@ -119,5 +150,6 @@ while true; do
         *) print_error "非法指令" ;;
     esac
     echo ""
-    read -p "按回车键返回主菜单..." </dev/tty
+    # 修复点 3：同样加上 -r 防患未然
+    read -r -p "按回车键返回主菜单..." </dev/tty
 done
