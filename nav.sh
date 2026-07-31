@@ -53,10 +53,9 @@ show_menu() {
     echo "5. 查看节点运行状态"
     echo "6. 彻底卸载"
     echo "7. 手动修改配置文件"
-    echo "8. 一键开启自签证书"
     echo "0. 退出"
     echo -e "${BLUE}=======================================${NC}"
-    read -r -p "请输入选项 (1-9): " choice </dev/tty
+    read -r -p "请输入选项 (0-7): " choice </dev/tty
 }
 
 install_node() {
@@ -149,23 +148,6 @@ edit_config() {
     fi
 }
 
-enable_self_cert() {
-    if [ -f /etc/xboard-node/config.yml ]; then
-        print_info "正在将证书模式修改为自签 (self)..."
-        # 使用 sed 查找 cert_mode 并将其替换为 self
-        sed -i 's/cert_mode:.*/cert_mode: self/g' /etc/xboard-node/config.yml
-        print_success "✅ 配置文件修改成功！"
-        
-        print_info "正在重启节点服务以应用更改..."
-        restart_node
-        
-        echo ""
-        print_warn "提示：开启自签证书后，连接该节点的所有 TLS 加密协议时，请务必在客户端开启“跳过证书验证” (insecure: true)，否则将无法连接。"
-    else
-        print_error "配置文件不存在，请先执行选项 1 安装节点！"
-    fi
-}
-
 uninstall_node() {
     print_warn "⚠️ 即将彻底卸载 Xboard-Node"
     print_warn "将删除：服务文件、主程序、xbctl、/etc/xboard-node 配置目录"
@@ -214,9 +196,6 @@ while true; do
             ;;
         7)
             edit_config
-            ;;
-        8)
-            enable_self_cert
             ;;
         0)
             exit 0
